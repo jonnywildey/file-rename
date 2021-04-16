@@ -3,7 +3,7 @@ use structopt::StructOpt;
 
 /// Recursively search for a pattern in file names and replace
 #[derive(StructOpt, Clone)]
-struct Cli {
+struct FileRenameArgs {
     /// The pattern to look for
     #[structopt(long, short)]
     pattern: String,
@@ -21,9 +21,45 @@ struct Cli {
 type RenameList = Vec<(std::path::PathBuf, std::path::PathBuf)>;
 
 fn main() {
-    let args = Cli::from_args();
+    let args = FileRenameArgs::from_args();
     let rename_list = rename_directory(args.clone(), 50);
 
+    write_files(rename_list, args);
+}
+
+fn rename_directory(args: FileRenameArgs, limit: u8) -> RenameList {
+    let mut rename_list: RenameList = vec![];
+    // Get a list of all entries
+
+    for entry in args
+        .path
+        .read_dir()
+        .expect("Path must be a valid directory")
+    {
+        if let Ok(entry) = entry {
+            let current_path = entry.path();
+            let current_path_as_str = current_path.to_str().expect("Error reading path");
+
+            if current_path.is_dir() {
+                let new_args = FileRenameArgs {
+                    path: current_path.clone(),
+                    ..args.clone()
+                };
+                rename_list.append(&mut rename_directory(new_args, limit - 1));
+            }
+            if current_path_as_str.contains(&args.pattern) && current_path.is_file() {
+                let new_path = std::path::Path::new(
+                    &current_path_as_str.replace(&args.pattern, &args.replace),
+                )
+                .to_path_buf();
+                rename_list.push((current_path.clone(), new_path));
+            }
+        }
+    }
+    rename_list
+}
+
+fn write_files(rename_list: RenameList, args: FileRenameArgs) {
     for (old_path, new_path) in rename_list {
         println!(
             "{} -> {}",
@@ -42,36 +78,4 @@ fn main() {
             fs::rename(old_path, new_path).expect("Error renaming file");
         }
     }
-}
-
-fn rename_directory(args: Cli, limit: u8) -> RenameList {
-    let mut rename_list: RenameList = vec![];
-    // Get a list of all entries
-
-    for entry in args
-        .path
-        .read_dir()
-        .expect("Path must be a valid directory")
-    {
-        if let Ok(entry) = entry {
-            let current_path = entry.path();
-            let current_path_as_str = current_path.to_str().expect("Error reading path");
-
-            if current_path.is_dir() {
-                let new_args = Cli {
-                    path: current_path.clone(),
-                    ..args.clone()
-                };
-                rename_list.append(&mut rename_directory(new_args, limit - 1));
-            }
-            if current_path_as_str.contains(&args.pattern) && current_path.is_file() {
-                let new_path = std::path::Path::new(
-                    &current_path_as_str.replace(&args.pattern, &args.replace),
-                )
-                .to_path_buf();
-                rename_list.push((current_path.clone(), new_path));
-            }
-        }
-    }
-    rename_list
 }
