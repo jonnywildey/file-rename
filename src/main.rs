@@ -27,7 +27,7 @@ fn main() {
     let rename_list = rename_directory(args.clone(), 50);
 
     for (old_path, new_path) in rename_list {
-        println!("{:?} -> {:?}", old_path.to_str(), new_path.to_str());
+        println!("{} -> {}", old_path.to_str().expect("Invalid Path"), new_path.to_str().expect("Invalid Path"));
         if !args.test {
           fs::rename(old_path, new_path).expect("Error renaming file");
         }
@@ -35,17 +35,20 @@ fn main() {
 }
 
 fn rename_directory(args: Cli, limit: u8) -> RenameList  {
- let mut rename_list: RenameList  =  vec![];
+ let mut rename_list: RenameList = vec![];
  // Get a list of all entries
  
  for entry in args.path.read_dir().expect("Path must be a valid directory") {
    if let Ok(entry) = entry {
-     let name = entry.file_name().to_str().expect("No filename").to_string();
-      if name.contains(&args.pattern) {
-          let new_name = name.replace(&args.pattern, &args.replace);
-          let old_path = entry.path();
-          let new_path = entry.path().with_file_name(new_name);
-          rename_list.push((old_path, new_path));
+     let current_path = entry.path();
+     if current_path.is_dir() {
+        let new_args  = Cli { path: current_path.clone(), ..args.clone() };
+        rename_list.append(&mut rename_directory(new_args, limit - 1));
+     }
+     let current_path_as_str = current_path.to_str().expect("Error reading path");
+      if current_path_as_str.contains(&args.pattern) {
+        let new_path = std::path::Path::new(&current_path_as_str.replace(&args.pattern, &args.replace)).to_path_buf();
+        rename_list.push((current_path, new_path));
       }
    }
  }
